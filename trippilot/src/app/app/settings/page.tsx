@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Bell, Compass, RotateCcw, Shield, User } from "lucide-react";
 import { useData } from "@/lib/data/provider";
@@ -158,6 +158,29 @@ function NotificationsSection() {
   );
 }
 
+function AIUsage() {
+  const [usage, setUsage] = useState<{ live: boolean; used: number; limit: number } | null>(null);
+  useEffect(() => {
+    fetch("/api/ai/usage")
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setUsage)
+      .catch(() => setUsage(null));
+  }, []);
+  if (!usage?.live) return null;
+  const pct = Math.min(100, (usage.used / Math.max(usage.limit, 1)) * 100);
+  return (
+    <div className="rounded-2xl border border-line p-4">
+      <p className="text-sm font-semibold">AI credits (last 24 hours)</p>
+      <p className="mt-1 text-sm text-muted">
+        {usage.used} of {usage.limit} used. A full itinerary uses 5, a day re-plan 2, and a concierge message or activity swap 1.
+      </p>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-ivory-200" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100} aria-label="AI credits used">
+        <div className={cn("h-full rounded-full", pct > 90 ? "bg-danger" : "bg-pilot")} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
 function AccountSection() {
   const { repo, profile, signOut } = useData();
   const [confirmReset, setConfirmReset] = useState(false);
@@ -176,6 +199,7 @@ function AccountSection() {
       ) : (
         <div className="space-y-3">
           <p className="text-sm">Signed in as <b>{profile.email}</b></p>
+          <AIUsage />
           <Button
             variant="secondary"
             loading={sending}

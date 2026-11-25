@@ -44,3 +44,4 @@ tests/screenshots/
 
 # Keep the lockfile for reproducible installs (the repo root ignores lockfiles)
 !package-lock.json
+evals/itinerary/results/

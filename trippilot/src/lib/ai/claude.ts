@@ -22,6 +22,12 @@ import {
   describeTrip,
 } from "./context";
 import { tripLength } from "../utils";
+import { DayStreamParser } from "./stream-parser";
+
+export interface AIResult<T> {
+  data: T;
+  usage: { input_tokens: number; output_tokens: number } | null;
+}
 
 export const AI_MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
 
@@ -66,9 +72,12 @@ async function structured<T>(opts: {
   user: string;
   maxTokens: number;
   effort: "low" | "medium" | "high";
-}): Promise<T> {
+  signal?: AbortSignal;
+  onText?: (delta: string) => void;
+}): Promise<AIResult<T>> {
   try {
-    const stream = getClient().beta.messages.stream({
+    const stream = getClient().beta.messages.stream(
+      {
       model: AI_MODEL,
       max_tokens: opts.maxTokens,
       betas: ["server-side-fallback-2026-07-01"],
@@ -77,8 +86,12 @@ async function structured<T>(opts: {
       output_config: { effort: opts.effort, format: betaZodOutputFormat(opts.schema) },
       system: opts.system,
       messages: [{ role: "user", content: opts.user }],
-    });
+      },
+      { signal: opts.signal },
+    );
+    if (opts.onText) stream.on("text", opts.onText);
     const message = await stream.finalMessage();
+    const usage = { input_tokens: message.usage.input_tokens, output_tokens: message.usage.output_tokens };
     if (message.stop_reason === "refusal") {
       throw new AIError("TripPilot couldn't help with that request. Try rephrasing it.", 422);
     }
@@ -91,9 +104,10 @@ async function structured<T>(opts: {
     // Re-validate with Zod to be certain of the shape before it reaches the app.
     const parsed = opts.schema.safeParse(message.parsed_output);
     if (!parsed.success) throw new AIError("The AI response failed validation. Please try again.", 502);
-    return parsed.data;
+    return { data: parsed.data, usage };
   } catch (err) {
     if (err instanceof AIError) throw err;
+    if (err instanceof Anthropic.APIUserAbortError) throw new AIError("Request cancelled.", 499);
     if (err instanceof Anthropic.RateLimitError) {
       throw new AIError("TripPilot is busy right now. Please try again in a moment.", 429);
     }
@@ -116,7 +130,8 @@ function contextBlock(bundle: TripBundle, prefs: TravelPreferences | null) {
 export async function generateItinerary(
   bundle: TripBundle,
   prefs: TravelPreferences | null,
-): Promise<AIItinerary> {
+  opts: { signal?: AbortSignal; onDay?: (day: AIDay) => void } = {},
+): Promise<AIResult<AIItinerary>> {
   const n = tripLength(bundle.trip.start_date, bundle.trip.end_date);
   const user = `${contextBlock(bundle, prefs)}
 
@@ -127,12 +142,24 @@ ${describeItinerary(bundle)}
 Create a complete ${n}-day itinerary (exactly ${n} days, day_number 1..${n}, dates starting ${bundle.trip.start_date}).
 If there are multiple destinations, split the days sensibly and mention the transfer in transport_notes.
 Work saved places in where they fit. Keep any activity marked as edited by the traveler.`;
+  // Parse days out of the partial JSON as it streams so the client can show
+  // them immediately. The final, fully validated itinerary stays authoritative.
+  const parser = new DayStreamParser();
   return structured({
     schema: aiItinerarySchema,
     system: PLANNER_SYSTEM,
     user,
     maxTokens: 64000,
     effort: "medium",
+    signal: opts.signal,
+    onText: opts.onDay
+      ? (delta) => {
+          for (const raw of parser.push(delta)) {
+            const day = aiDaySchema.safeParse(raw);
+            if (day.success) opts.onDay!(day.data);
+          }
+        }
+      : undefined,
   });
 }
 
@@ -141,7 +168,7 @@ export async function regenerateDay(
   prefs: TravelPreferences | null,
   dayNumber: number,
   instructions: string,
-): Promise<AIDay> {
+): Promise<AIResult<AIDay>> {
   const user = `${contextBlock(bundle, prefs)}
 
 <current_itinerary>
@@ -161,7 +188,7 @@ export async function regenerateActivity(
   activityName: string,
   isRestaurant: boolean,
   instructions: string,
-): Promise<AIActivity> {
+): Promise<AIResult<AIActivity>> {
   const user = `${contextBlock(bundle, prefs)}
 
 <current_itinerary>
@@ -196,7 +223,7 @@ export async function conciergeReply(
   prefs: TravelPreferences | null,
   history: ChatMessage[],
   message: string,
-): Promise<AIChatResponse> {
+): Promise<AIResult<AIChatResponse>> {
   const today = new Date().toISOString().slice(0, 10);
   const context = `${contextBlock(bundle, prefs)}
 
@@ -230,12 +257,16 @@ Today's date: ${today}.`;
       messages: mergeConsecutive(messages),
     });
     const res = await stream.finalMessage();
+    const usage = { input_tokens: res.usage.input_tokens, output_tokens: res.usage.output_tokens };
     if (res.stop_reason === "refusal") {
-      return { reply: "I'm not able to help with that one. Is there something else about the trip I can do?", proposal: null };
+      return {
+        data: { reply: "I'm not able to help with that one. Is there something else about the trip I can do?", proposal: null },
+        usage,
+      };
     }
     const parsed = aiChatResponseSchema.safeParse(res.parsed_output);
     if (!parsed.success) throw new AIError("The concierge returned an unexpected format. Please try again.");
-    return parsed.data;
+    return { data: parsed.data, usage };
   } catch (err) {
     if (err instanceof AIError) throw err;
     if (err instanceof Anthropic.RateLimitError) throw new AIError("TripPilot is busy. Try again in a moment.", 429);

@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
-    "test:e2e": "node tests/e2e.cjs"
+    "test:e2e": "node tests/e2e.cjs",
+    "test": "vitest run",
+    "eval:itinerary": "tsx --conditions=react-server scripts/eval-itinerary.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.14.0",
@@ -33,13 +35,15 @@
   "devDependencies": {
     "@tailwindcss/turbopack": "4.3.3",
     "@types/leaflet": "^1.9.23",
-    "@types/node": "^20",
+    "@types/node": "^22.20.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
     "playwright": "^1.63.0",
     "tailwindcss": "4.3.3",
-    "typescript": "^5"
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.1.1"
   }
 }

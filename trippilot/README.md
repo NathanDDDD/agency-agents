@@ -17,9 +17,10 @@ It runs end to end **with no credentials at all** in a clearly labelled demo mod
 | Onboarding | 4-step travel-preference setup (style, party, budget, stays, food, activities, pace, dream destinations, accessibility), saved to the DB and editable in Settings |
 | Dashboard | Featured next trip, upcoming and past trips, saved places, recent activity, quick concierge access, empty state for new users |
 | Create trip | Natural-language description with instant on-device extraction ("Fill in the details") plus a full validated form |
-| AI planning | Structured itinerary from Claude, validated with Zod, plus regeneration of the whole itinerary, a single day, a single activity, or a restaurant. Traveler edits are always preserved |
+| AI planning | Structured itinerary from Claude, validated with Zod and **streamed day by day** (each day appears as soon as it's planned), plus regeneration of the whole itinerary, a single day, a single activity, or a restaurant. Traveler edits are always preserved |
 | Itinerary | Day-by-day, chronological, drag-and-drop reordering (mouse, touch, keyboard), add, edit, delete, move to another day, mark done, notes, transport tips, source badges (AI / demo / added by you / edited) |
-| Map | Leaflet map, markers coloured by day, restaurants in gold, dashed route per day, day filter, marker to details card, list item to marker, directions link. Provider-agnostic |
+| Map | Leaflet map, markers coloured by day, restaurants in gold, dashed route per day, day filter, marker to details card, list item to marker, directions link. Provider-agnostic. Addresses are geocoded automatically when you add or edit a stop, and "Locate missing stops" places any AI suggestions that came without coordinates |
+| AI usage limits | Per-traveler credits (rolling 24 h) and a 10-minute burst limit, enforced atomically in Postgres, with token usage recorded per request. Credits used are shown in Settings |
 | Bookings | Flights, hotels, restaurants, activities, transport, car rental and other bookings, with confirmation numbers, dates, address, URL, cost, notes and private document uploads |
 | Budget | Total, spent, planned, remaining, category breakdown bar, planned vs actual table, expense CRUD, AI itinerary estimate |
 | AI Concierge | Chat that sees the trip, preferences, itinerary (with IDs), bookings, budget, saved places and history. Change requests come back as **proposals you approve or dismiss**; nothing changes without confirmation |
@@ -44,9 +45,11 @@ trippilot/
 │  │  ├─ onboarding/           Preference wizard
 │  │  ├─ app/                  Authenticated app: dashboard, trips/new, trips/[id], settings
 │  │  └─ api/
-│  │     ├─ ai/plan            Full itinerary generation
+│  │     ├─ ai/plan            Full itinerary generation (streams NDJSON: start → day… → done)
 │  │     ├─ ai/regenerate      Day / activity regeneration
 │  │     ├─ ai/chat            Concierge
+│  │     ├─ ai/usage           Today's AI credit usage for the signed-in traveler
+│  │     ├─ geocode            Address → coordinates (Mapbox or Nominatim)
 │  │     └─ status             Which integrations are live (no secrets)
 │  ├─ components/
 │  │  ├─ ui/                   Design-system primitives (Button, Field, Modal, Badge…)
@@ -58,7 +61,12 @@ trippilot/
 │     ├─ data/                 DataRepository interface, Local (demo) + Supabase implementations
 │     ├─ ai/                   Claude client (server-only), prompts/context, guard, convert/merge
 │     ├─ demo/                 Seed trips + scripted demo AI
+│     ├─ eval/score.ts         Deterministic itinerary quality checks (benchmark)
+│     ├─ geocode.ts            Geocoding request/response helpers (server/geocoder.ts does the calls)
 │     └─ parse-prompt.ts       Deterministic NL → form extraction
+├─ evals/itinerary/cases.json  15 benchmark trips for the itinerary quality eval
+├─ scripts/eval-itinerary.ts   Runs the benchmark (demo or live)
+├─ src/lib/__tests__/          Vitest unit tests
 └─ tests/e2e.cjs               Playwright smoke test of all core flows
 ```
 
@@ -66,7 +74,8 @@ trippilot/
 
 - **One data contract, two backends.** The UI talks to `DataRepository`. `SupabaseRepository` uses supabase-js in the browser, protected by Row Level Security. `LocalRepository` keeps demo data in `localStorage`. Records use client-generated UUIDs, so both behave the same.
 - **Stateless AI routes.** The client sends the trip snapshot. The server calls Claude, validates the output with Zod and returns it. The client converts, merges and persists it under RLS. API keys never reach the browser.
-- **Live AI only for signed-in users.** When Supabase is configured, `/api/ai/*` serves live Claude only to authenticated users (rate-limited per user). Anonymous demo visitors get labelled demo responses.
+- **Live AI only for signed-in users, metered.** When Supabase is configured, `/api/ai/*` serves live Claude only to authenticated users. Each request first calls the `consume_ai_quota()` Postgres function, which checks the traveler's credits and burst limit and records the request in `ai_usage` atomically. Travelers can't write to that table directly, so they can't reset their quota. If metering is unavailable (e.g. the migration hasn't been run), AI fails closed with a clear message. Anonymous demo visitors get labelled demo responses at no cost. Without Supabase (local dev), the same limits apply in memory per IP.
+- **Streaming generation.** `/api/ai/plan` streams Claude's structured output. A small incremental parser (`lib/ai/stream-parser.ts`) emits each day as soon as its JSON object closes, the client renders it immediately, and the final fully-validated itinerary is what gets saved. Pings every 10 s keep proxies from closing the connection while the model thinks.
 - **Edits are sacred.** Activities added, edited or completed by the traveler are flagged (`user_modified`, `source = "user"`) and preserved by every regeneration, both in the prompt and in a deterministic server-independent merge.
 - **Confirm before change.** Concierge change requests return typed operations (`remove_activity`, `replace_activity`, `add_activity`). They are validated against real activity IDs, then shown as a proposal with Apply / Dismiss.
 - **Swappable maps.** `components/map/types.ts` defines `TripMapProps`. The Leaflet implementation supports OSM/CARTO tiles (no key) or Mapbox tiles. Adding Google Maps means one new component that implements the same props.
@@ -92,7 +101,7 @@ Tokens live in `src/app/globals.css` (`@theme`). Shared patterns: rounded `card`
 
 Tables (all with UUID PKs, `created_at`/`updated_at`, ownership and RLS):
 
-`profiles`, `trips`, `trip_members` (sharing, P2), `trip_preferences`, `itinerary_days`, `activities`, `bookings`, `expenses`, `saved_places`, `chat_messages`, plus a private `booking-documents` storage bucket.
+`profiles`, `trips`, `trip_members` (sharing, P2), `trip_preferences`, `itinerary_days`, `activities`, `bookings`, `expenses`, `saved_places`, `chat_messages`, `ai_usage`, plus a private `booking-documents` storage bucket.
 
 - `trip_preferences` with `trip_id IS NULL` holds the traveler's default preferences. Rows with a `trip_id` are reserved for per-trip overrides.
 - Access helpers `can_read_trip()` / `can_write_trip()` grant owners full access and trip members read (viewer) or write (editor) access. Chat stays private per user even on shared trips.
@@ -124,6 +133,10 @@ Open http://localhost:3000 and click **Explore the demo**.
 | `ANTHROPIC_MODEL` | No | Model override (default `claude-opus-5-5`) |
 | `NEXT_PUBLIC_MAP_PROVIDER` | No | `osm` (default) or `mapbox` |
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Only with Mapbox | Mapbox tiles (use a URL-restricted public token) |
+| `AI_DAILY_CREDIT_LIMIT` | No | Credits per traveler per 24 h (default 60) |
+| `AI_BURST_LIMIT` | No | AI requests per 10 minutes (default 20) |
+| `MAPBOX_TOKEN` | No | Server-side Mapbox geocoding (otherwise Nominatim) |
+| `GEOCODER_CONTACT_EMAIL` | Recommended with Nominatim | Your contact in the Nominatim User-Agent, per its usage policy |
 
 What each combination gives you:
 
@@ -137,8 +150,8 @@ What each combination gives you:
 ### Supabase setup
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Run the migration, either:
-   - **SQL editor:** paste `supabase/migrations/20261125000000_initial_schema.sql` and run it, or
+2. Run both migrations in order, either:
+   - **SQL editor:** paste and run `supabase/migrations/20261125000000_initial_schema.sql`, then `20261126000000_ai_usage_quota.sql`, or
    - **CLI:** `npx supabase link --project-ref <ref>` then `npx supabase db push`.
 3. **Authentication → URL configuration:** set the Site URL to your domain, and add `http://localhost:3000/auth/callback` and `https://<your-domain>/auth/callback` to Redirect URLs.
 4. Copy the project URL and anon key into `.env.local`.
@@ -158,10 +171,34 @@ npm run build       # production build
 npm start           # serve the production build
 npm run lint        # ESLint
 npm run typecheck   # route type generation + tsc --noEmit
+npm test            # Vitest unit tests
 npm run test:e2e    # Playwright smoke test against BASE_URL (default http://localhost:3000)
+npm run eval:itinerary -- --demo   # itinerary quality benchmark (see below)
 ```
 
-`test:e2e` needs a running server (`npm run build && npm start`) and a Playwright Chromium (`npx playwright install chromium`). It covers: landing page, demo entry, dashboard, overview, itinerary edit/complete/add, day and activity regeneration (edits preserved), map markers and focus, bookings, budget, concierge Q&A and proposal apply, persistence across reloads, creating a trip from a natural-language prompt and generating it, settings, and mobile layout.
+**CI:** `.github/workflows/trippilot-ci.yml` (repo root) runs lint, typecheck, unit tests, build and the end-to-end suite on every push or PR that touches `trippilot/`.
+
+### Itinerary quality benchmark
+
+`evals/itinerary/cases.json` holds 15 realistic trips, including multi-city, family, vegetarian, accessibility, budget, business and one "keep my edits" case. `npm run eval:itinerary` generates each one and scores it with deterministic checks (`src/lib/eval/score.ts`):
+
+| Check | What it catches |
+|---|---|
+| `day_count` | Wrong number of days |
+| `lunch_and_dinner` | Full days missing a lunch or dinner pick |
+| `pace` | Too many or too few sights for relaxed / balanced / packed |
+| `budget` | Activity estimates exceeding the trip budget |
+| `coords_in_area` / `coords_coverage` | Coordinates outside the destination, or missing |
+| `no_duplicates` | The same place suggested twice |
+| `valid_urls` | Malformed booking links |
+| `timed_and_ordered` | Missing times, or out-of-order days |
+| `all_destinations` | Multi-city trips that skip a city |
+| `preserves_edits` | The model dropping activities the traveler edited |
+| `places_verified` (`--verify-places`) | Places that can't be found by name near the AI's coordinates (a check for invented places; slow, 1 lookup/second) |
+
+Modes: `--demo` (free, checks the wiring), live (needs `ANTHROPIC_API_KEY`; roughly $0.25–0.40 per trip on Opus 5.5, so about $4–6 per full run; the script prints actual token cost), `--only=<case-id>`, `--concurrency=N`. Results are saved to `evals/itinerary/results/` (git-ignored). Run it before and after any prompt or model change and compare the per-check scores.
+
+`test:e2e` needs a running server (`npm run build && npm start`) and a Playwright Chromium (`npx playwright install chromium`). It covers: landing page, demo entry, dashboard, overview, itinerary edit/complete/add, day and activity regeneration (edits preserved), geocoding with a mocked lookup (unknown address → no pin → "Locate missing stops"), map markers and focus, bookings, budget, concierge Q&A and proposal apply, persistence across reloads, creating a trip from a natural-language prompt with streamed generation, settings, and mobile layout.
 
 ---
 
@@ -177,13 +214,13 @@ npm run test:e2e    # Playwright smoke test against BASE_URL (default http://loc
 
 ## Known issues & next steps
 
-- **Live AI not yet exercised end to end in CI.** The Claude request path is verified up to authentication (an invalid key returns a clean 401 → 500 error). A real-key run should be done before user testing. It is the first item on the checklist.
-- **Rate limiting is in-memory per instance.** Replace with Upstash/Redis or a Supabase table before public launch.
-- **Function timeouts:** full-itinerary generation for long trips can approach serverless limits. Streaming progress to the client is a natural next step.
+- **Live AI, Supabase metering and real geocoding haven't run against real services yet.** This environment has no keys and blocks the geocoding hosts. The Claude request path is verified up to authentication. The quota SQL and geocoding are covered by unit tests and mocked end-to-end tests. Do a real-key pass (and a first live benchmark run) before user testing.
+- **Function time limits:** streaming fixes the long blank wait, but the whole generation must still finish within the platform's limit (`maxDuration = 300`).
+- **Geocoding** uses in-memory caching and throttling per server instance. That's fine for a beta with Nominatim; switch to Mapbox (`MAPBOX_TOKEN`) or add a shared cache before larger traffic.
 - **Weather** is a placeholder card (P1). Open-Meteo is a good keyless option.
 - **Currency conversion** isn't implemented. Expenses in other currencies are flagged and excluded from totals.
 - **Shared trips (P2)** are supported in the schema and RLS (`trip_members`), but have no invite UI yet.
-- **Geocoding:** activities only appear on the map when the AI (or demo data) provides coordinates. Manually edited addresses clear stale coordinates. A geocoding step would fill these in.
+- **Demo planner quality:** for cities outside the curated Rome/Florence library, demo itineraries reuse generic placeholders. This affects demo mode only.
 - **Account deletion** is a support request for now.
 - Photography is loaded from Unsplash. Every image falls back to a branded gradient if it fails.
 

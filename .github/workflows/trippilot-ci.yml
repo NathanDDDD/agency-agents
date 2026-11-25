@@ -1,0 +1,49 @@
+name: TripPilot CI
+
+on:
+  push:
+    paths:
+      - "trippilot/**"
+      - ".github/workflows/trippilot-ci.yml"
+  pull_request:
+    paths:
+      - "trippilot/**"
+      - ".github/workflows/trippilot-ci.yml"
+
+concurrency:
+  group: trippilot-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: trippilot
+
+jobs:
+  checks:
+    name: Lint, typecheck, unit tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: trippilot/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: End-to-end tests (demo mode)
+        run: |
+          npx playwright install --with-deps chromium
+          (npm start > server.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf http://localhost:3000 > /dev/null && break; sleep 1; done
+          npm run test:e2e
+      - name: Upload e2e screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: trippilot/tests/screenshots
+          if-no-files-found: ignore

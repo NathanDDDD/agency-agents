@@ -17,6 +17,8 @@ import type {
 import type { AIActivity, AIChatResponse, AIDay, AIItinerary } from "@/lib/schemas";
 import { mergeDay, mergeItinerary, orderActivities, sanitizeActivity, toActivity, toDay } from "@/lib/ai/convert";
 import { nowIso, uid } from "@/lib/utils";
+import { readNdjson, type PlanStreamEvent } from "@/lib/ai/stream-parser";
+import { aiDaySchema, aiItinerarySchema } from "@/lib/schemas";
 
 type AIMode = "live" | "demo";
 
@@ -43,6 +45,8 @@ function aiBundle(b: TripBundle) {
 interface TripContextValue {
   bundle: TripBundle;
   busy: { generating: boolean; dayId: string | null; activityId: string | null; chatting: boolean };
+  /** Days received so far while an itinerary is streaming in. */
+  streaming: { days: ItineraryDay[]; total: number } | null;
   lastMode: AIMode | null;
   reload: () => Promise<void>;
   updateTrip: (patch: Partial<Trip>) => Promise<void>;
@@ -94,6 +98,7 @@ export function TripProvider({ initial, children }: { initial: TripBundle; child
   }, [bundle]);
   const [busy, setBusy] = useState<TripContextValue["busy"]>({ generating: false, dayId: null, activityId: null, chatting: false });
   const [lastMode, setLastMode] = useState<AIMode | null>(null);
+  const [streaming, setStreaming] = useState<TripContextValue["streaming"]>(null);
   const [focusedActivityId, setFocused] = useState<string | null>(null);
 
   const tripId = bundle.trip.id;
@@ -121,6 +126,7 @@ export function TripProvider({ initial, children }: { initial: TripBundle; child
     return {
       bundle,
       busy,
+      streaming,
       lastMode,
       reload,
       focusedActivityId,
@@ -142,22 +148,54 @@ export function TripProvider({ initial, children }: { initial: TripBundle; child
 
       async generateItinerary() {
         setBusy((s) => ({ ...s, generating: true }));
+        const current = bundleRef.current;
+        const sourceFor = (mode: AIMode) => (mode === "live" ? "ai" : "demo") as "ai" | "demo";
+        setStreaming({ days: [], total: 0 });
         try {
-          const current = bundleRef.current;
-          const res = await postJSON<{ mode: AIMode; itinerary: AIItinerary }>("/api/ai/plan", {
-            bundle: aiBundle(current),
-            preferences,
+          const res = await fetch("/api/ai/plan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ bundle: aiBundle(current), preferences }),
           });
-          const generated = res.itinerary.days.map((d, i) => toDay(d, { trip: current.trip, index: i, source: res.mode === "live" ? "ai" : "demo" }));
+          if (!res.ok || !res.body) {
+            const data = (await res.json().catch(() => ({}))) as { error?: string };
+            throw new Error(data.error ?? `Request failed (${res.status})`);
+          }
+          let mode: AIMode = "demo";
+          let final: AIItinerary | null = null;
+          for await (const event of readNdjson<PlanStreamEvent>(res.body)) {
+            if (event.type === "start") {
+              mode = event.mode;
+              setStreaming({ days: [], total: event.total_days });
+            } else if (event.type === "day") {
+              const parsed = aiDaySchema.safeParse(event.day);
+              if (!parsed.success) continue;
+              setStreaming((st) => {
+                const index = st ? st.days.length : 0;
+                const day = toDay(parsed.data, { trip: current.trip, index, source: sourceFor(mode) });
+                return { total: st?.total ?? 0, days: [...(st?.days ?? []), day] };
+              });
+            } else if (event.type === "error") {
+              throw new Error(event.error);
+            } else if (event.type === "done") {
+              const parsed = aiItinerarySchema.safeParse(event.itinerary);
+              if (!parsed.success) throw new Error("The itinerary came back in an unexpected format. Please try again.");
+              final = parsed.data;
+              mode = event.mode;
+            }
+          }
+          if (!final) throw new Error("The connection closed before the itinerary finished. Please try again.");
+          const generated = final.days.map((d, i) => toDay(d, { trip: current.trip, index: i, source: sourceFor(mode) }));
           const merged = mergeItinerary(current.days, generated);
           await repo.replaceItinerary(tripId, merged);
-          const trip = await repo.updateTrip(tripId, { itinerary_source: res.mode === "live" ? "ai" : "demo" });
+          const trip = await repo.updateTrip(tripId, { itinerary_source: sourceFor(mode) });
           setBundle((b) => ({ ...b, trip, days: merged }));
-          setLastMode(res.mode);
-          toast.success(res.mode === "live" ? "Your itinerary is ready" : "Demo itinerary created (sample content, not live AI)");
+          setLastMode(mode);
+          toast.success(mode === "live" ? "Your itinerary is ready" : "Demo itinerary created (sample content, not live AI)");
         } catch (err) {
           await fail(err, "Could not generate itinerary");
         } finally {
+          setStreaming(null);
           setBusy((s) => ({ ...s, generating: false }));
         }
       },
@@ -261,7 +299,7 @@ export function TripProvider({ initial, children }: { initial: TripBundle; child
       async updateActivity(id, patch, opts) {
         const found = findActivity(bundleRef.current, id);
         if (!found) return;
-        const contentChange = Object.keys(patch).some((k) => !["completed", "sort_order"].includes(k));
+        const contentChange = Object.keys(patch).some((k) => !["completed", "sort_order", "latitude", "longitude"].includes(k));
         const full = { ...patch, ...(contentChange ? { user_modified: true } : {}) };
         setDays((days) =>
           days.map((d) => (d.id === found.day.id ? { ...d, activities: d.activities.map((a) => (a.id === id ? { ...a, ...full } : a)) } : d)),
@@ -498,7 +536,7 @@ export function TripProvider({ initial, children }: { initial: TripBundle; child
         await repo.deletePlace(id).catch((err: unknown) => fail(err, "Could not remove place"));
       },
     };
-  }, [bundle, busy, lastMode, reload, focusedActivityId, repo, tripId, preferences, fail]);
+  }, [bundle, busy, streaming, lastMode, reload, focusedActivityId, repo, tripId, preferences, fail]);
 
   return <TripContext value={value}>{children}</TripContext>;
 }

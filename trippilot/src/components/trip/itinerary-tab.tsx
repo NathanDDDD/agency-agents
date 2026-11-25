@@ -54,34 +54,75 @@ const GEN_MESSAGES = [
   "Adding transport tips and notes…",
 ];
 
+function StreamedDayPreview({ day }: { day: ItineraryDay }) {
+  return (
+    <li className="animate-fade-up rounded-2xl border border-line bg-white p-4">
+      <div className="flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl font-display text-white" style={{ background: dayColor(day.day_number) }}>
+          {day.day_number}
+        </span>
+        <div className="min-w-0">
+          <p className="text-xs text-muted">{formatDate(day.date, { weekday: "short", month: "short", day: "numeric" })} · {day.city}</p>
+          <p className="font-display text-lg leading-tight">{day.title}</p>
+          <p className="mt-1 truncate text-sm text-muted">{day.activities.map((a) => a.name).join(" · ")}</p>
+        </div>
+      </div>
+    </li>
+  );
+}
+
 function GeneratingState() {
+  const { streaming } = useTrip();
   const [i, setI] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setI((x) => (x + 1) % GEN_MESSAGES.length), 2400);
     return () => clearInterval(t);
   }, []);
+  const received = streaming?.days.length ?? 0;
+  const total = streaming?.total ?? 0;
+  const pct = total ? Math.round((received / total) * 100) : 0;
   return (
     <div className="card overflow-hidden" role="status" aria-live="polite">
-      <div className="flex items-center gap-4 bg-navy p-6 text-ivory">
-        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gold text-navy">
-          <Sparkles className="h-6 w-6 animate-pulse" />
-        </span>
-        <div>
-          <p className="font-display text-xl">Planning your trip</p>
-          <p className="text-sm text-ivory/70">{GEN_MESSAGES[i]}</p>
+      <div className="bg-navy p-6 text-ivory">
+        <div className="flex items-center gap-4">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gold text-navy">
+            <Sparkles className="h-6 w-6 animate-pulse" />
+          </span>
+          <div className="min-w-0">
+            <p className="font-display text-xl">Planning your trip</p>
+            <p className="text-sm text-ivory/70">
+              {received > 0 && total ? `${received} of ${total} days planned…` : GEN_MESSAGES[i]}
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/15" aria-hidden="true">
+          <div
+            className={cn("h-full rounded-full bg-gold transition-all duration-500", received === 0 && "w-1/12 animate-pulse")}
+            style={received > 0 ? { width: `${Math.max(pct, 8)}%` } : undefined}
+          />
         </div>
       </div>
-      <div className="space-y-3 p-6">
-        {[0, 1, 2].map((k) => (
-          <div key={k} className="flex gap-3">
-            <div className="h-10 w-10 animate-pulse rounded-full bg-ivory-200" />
-            <div className="flex-1 space-y-2">
-              <div className="h-4 w-1/2 animate-pulse rounded bg-ivory-200" />
-              <div className="h-3 w-3/4 animate-pulse rounded bg-ivory-200" />
-            </div>
+      <div className="p-4 sm:p-6">
+        {received > 0 ? (
+          <ol className="space-y-2.5">
+            {streaming!.days.map((d) => (
+              <StreamedDayPreview key={d.id} day={d} />
+            ))}
+          </ol>
+        ) : (
+          <div className="space-y-3">
+            {[0, 1, 2].map((k) => (
+              <div key={k} className="flex gap-3">
+                <div className="h-10 w-10 animate-pulse rounded-full bg-ivory-200" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-1/2 animate-pulse rounded bg-ivory-200" />
+                  <div className="h-3 w-3/4 animate-pulse rounded bg-ivory-200" />
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-        <p className="pt-2 text-xs text-muted">This usually takes 20–60 seconds with live AI.</p>
+        )}
+        <p className="pt-3 text-xs text-muted">Days appear as they’re planned. Live AI usually takes 20–60 seconds in total.</p>
       </div>
     </div>
   );

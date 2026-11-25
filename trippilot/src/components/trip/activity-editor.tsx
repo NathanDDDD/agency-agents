@@ -11,6 +11,7 @@ import { activityFormSchema, type ActivityFormInput, type ActivityFormValues } f
 import { CATEGORY_META } from "@/lib/options";
 import type { Activity, ItineraryDay } from "@/lib/types";
 import { slotForTime } from "@/lib/utils";
+import { lookupLocation } from "@/lib/hooks/geocode-client";
 import { useTrip } from "./trip-context";
 
 export function ActivityEditor({
@@ -61,13 +62,30 @@ export function ActivityEditor({
       latitude: activity?.latitude ?? null,
       longitude: activity?.longitude ?? null,
     };
+    // Look up coordinates when the address is new or changed so the stop appears on the map.
+    const address = (v.address ?? "").trim();
+    const addressChanged = (activity?.address ?? "").trim() !== address;
+    const needsLookup = address.length > 1 && (addressChanged || data.latitude === null);
+    if (addressChanged) {
+      // Old coordinates belonged to the old address; never keep them.
+      data.latitude = null;
+      data.longitude = null;
+    }
+    if (needsLookup) {
+      try {
+        const found = await lookupLocation(address, day.city);
+        if (found) {
+          data.latitude = found.latitude;
+          data.longitude = found.longitude;
+        } else {
+          toast("We couldn't find that address on the map. The activity is saved without a pin.");
+        }
+      } catch {
+        toast("Location lookup is unavailable, so the activity is saved without a map pin.");
+      }
+    }
     if (activity) {
-      const addressChanged = (activity.address ?? "") !== (v.address ?? "");
-      await updateActivity(activity.id, {
-        ...data,
-        // Coordinates belonged to the old address; clear them rather than mislead the map.
-        ...(addressChanged ? { latitude: null, longitude: null } : {}),
-      });
+      await updateActivity(activity.id, data);
       if (targetDay !== day.id) {
         const dest = bundle.days.find((d) => d.id === targetDay);
         await moveActivity(activity.id, targetDay, dest?.activities.length ?? 0);

@@ -72,6 +72,25 @@ let failures = 0;
     await page.getByRole('dialog').getByRole('button', { name: 'Regenerate', exact: true }).click();
     await page.getByText(/Swapped in/).waitFor({ timeout: 15000 });
   });
+  await step('geocoding (mocked lookup)', async () => {
+    let geo = null;
+    await page.route('**/api/geocode', (route) => route.fulfill({ json: { result: geo } }));
+    // Change an address to one the geocoder can't find: the stop loses its stale pin.
+    await page.getByRole('button', { name: "Actions for St. Peter's Basilica" }).click();
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
+    await page.getByLabel('Address').fill('Somewhere unknown 123');
+    await page.getByRole('dialog').getByRole('button', { name: 'Save changes' }).click();
+    await page.getByText(/couldn't find that address/).waitFor();
+    await page.getByRole('tab', { name: 'Map' }).click();
+    await page.getByRole('button', { name: 'Locate missing stops' }).waitFor();
+    // Now the lookup succeeds: locating places it back on the map.
+    geo = { latitude: 41.9022, longitude: 12.4539, label: 'Piazza San Pietro', provider: 'nominatim' };
+    await page.getByRole('button', { name: 'Locate missing stops' }).click();
+    await page.getByText(/Placed \d+ of \d+ stops/).waitFor({ timeout: 10000 });
+    await page.getByRole('button', { name: 'Locate missing stops' }).waitFor({ state: 'detached' });
+    await page.unroute('**/api/geocode');
+    await page.getByRole('tab', { name: 'Itinerary' }).click();
+  });
   await step('map', async () => {
     await page.getByRole('tab', { name: 'Map' }).click();
     await page.locator('.tp-marker').first().waitFor({ timeout: 15000 });
@@ -139,6 +158,8 @@ let failures = 0;
     await page.screenshot({ path: SHOTS + 'new-trip.png', fullPage: true });
     await page.getByRole('button', { name: /Create trip/ }).click();
     await page.waitForURL(/\/app\/trips\/.+/);
+    await page.getByText(/of 6 days planned/).waitFor({ timeout: 15000 });
+    console.log('   streaming progress shown');
     await page.getByRole('heading', { name: /Arrival in Rome/ }).waitFor({ timeout: 20000 });
     await page.getByRole('heading', { name: /Florence/ }).first().waitFor();
     const days = await page.locator('section[id^="day-"]').count();

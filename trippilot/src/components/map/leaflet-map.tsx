@@ -45,6 +45,10 @@ export default function LeafletMap({ markers, focusedId, onSelect, showRoutes = 
     ro.observe(el.current);
     return () => {
       ro.disconnect();
+      // Stop in-flight pan/zoom animations first; removing a map mid-animation
+      // makes Leaflet throw "_leaflet_pos" errors.
+      map.current?.stop();
+      map.current?.off();
       map.current?.remove();
       map.current = null;
     };
@@ -79,8 +83,9 @@ export default function LeafletMap({ markers, focusedId, onSelect, showRoutes = 
       marker.addTo(group);
       markerRefs.current.set(mk.id, marker);
     }
-    if (markers.length === 1) m.setView([markers[0].lat, markers[0].lng], 15);
-    else if (markers.length > 1) m.fitBounds(L.latLngBounds(markers.map((x) => [x.lat, x.lng])), { padding: [48, 48], maxZoom: 15 });
+    m.stop();
+    if (markers.length === 1) m.setView([markers[0].lat, markers[0].lng], 15, { animate: false });
+    else if (markers.length > 1) m.fitBounds(L.latLngBounds(markers.map((x) => [x.lat, x.lng])), { padding: [48, 48], maxZoom: 15, animate: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` captures marker changes
   }, [key, showRoutes]);
 
@@ -89,6 +94,7 @@ export default function LeafletMap({ markers, focusedId, onSelect, showRoutes = 
     if (!focusedId) return;
     const marker = markerRefs.current.get(focusedId);
     if (!marker || !map.current) return;
+    map.current.stop();
     map.current.flyTo(marker.getLatLng(), Math.max(map.current.getZoom(), 15), { duration: 0.6 });
     marker.openPopup();
     document.querySelector(`.tp-marker[data-id="${focusedId}"]`)?.classList.add("is-active");

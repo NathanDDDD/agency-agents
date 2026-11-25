@@ -1,0 +1,32 @@
+[
+  { "id": "italy-couple-flagship", "destinations": ["Rome", "Florence"], "days": 6, "travelers": 2, "party": "couple", "budget": 4000, "currency": "USD", "pace": "relaxed", "interests": ["Fine dining", "History", "Nightlife"], "description": "Plan 6 days in Italy for a couple. Rome and Florence. Luxury hotels, amazing restaurants, historical places, nightlife, but no packed schedule. Budget $4,000 excluding flights." },
+  { "id": "paris-family", "destinations": ["Paris"], "days": 5, "travelers": 4, "party": "family", "budget": 3500, "currency": "EUR", "pace": "balanced", "interests": ["Art & museums", "Local cuisine"], "description": "Family of four with kids aged 7 and 10. Museums but not too many, parks, good bakeries." },
+  { "id": "tokyo-kyoto-solo", "destinations": ["Tokyo", "Kyoto"], "days": 10, "travelers": 1, "party": "solo", "budget": 3000, "currency": "USD", "pace": "packed", "interests": ["Architecture", "Food tours", "Nightlife", "Photography"], "description": "Solo first time in Japan. Want temples, ramen, design shops and late-night bars." },
+  { "id": "lisbon-budget", "destinations": ["Lisbon"], "days": 3, "travelers": 2, "party": "friends", "budget": 600, "currency": "EUR", "pace": "balanced", "interests": ["Local experiences", "Live music"], "description": "Long weekend on a tight budget. Fado, viewpoints, cheap eats." },
+  { "id": "nyc-business", "destinations": ["New York"], "days": 3, "travelers": 1, "party": "business", "budget": 1500, "currency": "USD", "pace": "relaxed", "interests": ["Fine dining"], "description": "Conference in Midtown during the days. Only evenings and one free afternoon. Great dinners near Midtown." },
+  { "id": "barcelona-vegetarian", "destinations": ["Barcelona"], "days": 4, "travelers": 2, "party": "couple", "budget": 2000, "currency": "EUR", "pace": "balanced", "interests": ["Architecture", "Beaches"], "description": "We are strictly vegetarian. Gaudí, beach time, tapas that work for vegetarians." },
+  { "id": "accessible-vienna", "destinations": ["Vienna"], "days": 4, "travelers": 2, "party": "couple", "budget": 2500, "currency": "EUR", "pace": "relaxed", "interests": ["Live music", "Art & museums"], "description": "One of us uses a wheelchair. Step-free venues only, classical music, cafés.", "accessibility": "Wheelchair user: step-free access required, avoid stairs and steep cobbles." },
+  { "id": "bangkok-street-food", "destinations": ["Bangkok"], "days": 4, "travelers": 2, "party": "friends", "budget": 800, "currency": "USD", "pace": "packed", "interests": ["Food tours", "Nightlife", "Shopping"], "description": "Street food everything, markets, rooftop bars." },
+  { "id": "reykjavik-nature", "destinations": ["Reykjavik"], "days": 5, "travelers": 2, "party": "couple", "budget": 3500, "currency": "USD", "pace": "balanced", "interests": ["Nature & hiking", "Wellness & spa", "Photography"], "description": "Iceland in winter. Northern lights chances, hot springs, Golden Circle. We will rent a car." },
+  { "id": "marrakech-first-time", "destinations": ["Marrakech"], "days": 4, "travelers": 2, "party": "couple", "budget": 1800, "currency": "EUR", "pace": "relaxed", "interests": ["Shopping", "Wellness & spa", "Local cuisine"], "description": "Souks, a hammam, riad dinners, maybe a day trip to the Atlas mountains." },
+  { "id": "london-theatre", "destinations": ["London"], "days": 4, "travelers": 2, "party": "friends", "budget": 2200, "currency": "GBP", "pace": "balanced", "interests": ["Live music", "History", "Local experiences"], "description": "West End shows, pubs, markets, one museum max." },
+  { "id": "amalfi-honeymoon", "destinations": ["Naples", "Amalfi"], "days": 7, "travelers": 2, "party": "couple", "budget": 9000, "currency": "EUR", "pace": "relaxed", "interests": ["Fine dining", "Beaches", "Wellness & spa"], "description": "Honeymoon. Pizza in Naples, then slow days on the Amalfi Coast, boat day, sunset dinners." },
+  { "id": "mexico-city-food", "destinations": ["Mexico City"], "days": 5, "travelers": 3, "party": "friends", "budget": 2000, "currency": "USD", "pace": "balanced", "interests": ["Food tours", "Art & museums", "Nightlife"], "description": "Tacos, mezcal, Frida Kahlo museum, Teotihuacan." },
+  { "id": "sydney-short", "destinations": ["Sydney"], "days": 2, "travelers": 1, "party": "solo", "budget": 700, "currency": "AUD", "pace": "packed", "interests": ["Beaches", "Architecture"], "description": "Quick stopover. Opera House, a coastal walk, Bondi." },
+  {
+    "id": "rome-preserve-edits",
+    "destinations": ["Rome"],
+    "days": 3,
+    "travelers": 2,
+    "party": "couple",
+    "budget": 2500,
+    "currency": "USD",
+    "pace": "relaxed",
+    "interests": ["History", "Local cuisine"],
+    "description": "Regenerate this trip but keep the things we already chose.",
+    "edited": [
+      { "day": 1, "name": "Dinner at Da Enzo al 29", "slot": "evening", "time": "19:30", "is_restaurant": true, "category": "restaurant", "address": "Via dei Vascellari 29, Rome", "lat": 41.8885, "lng": 12.4774 },
+      { "day": 2, "name": "Vatican Museums & Sistine Chapel", "slot": "morning", "time": "08:30", "is_restaurant": false, "category": "museum", "address": "Viale Vaticano, Vatican City", "lat": 41.9065, "lng": 12.4536 }
+    ]
+  }
+]

@@ -1,7 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Clock, ExternalLink, MapPin, MapPinOff, Utensils, Wallet, X } from "lucide-react";
+import { toast } from "sonner";
+import { lookupLocation } from "@/lib/hooks/geocode-client";
+import { Button } from "@/components/ui/button";
+import { Clock, Crosshair, ExternalLink, MapPin, MapPinOff, Utensils, Wallet, X } from "lucide-react";
 import { useTrip } from "./trip-context";
 import { TripMap } from "@/components/map/trip-map";
 import type { MapMarker } from "@/components/map/types";
@@ -10,7 +13,8 @@ import { CATEGORY_META, dayColor } from "@/lib/options";
 import { cn, formatDate, formatDuration, formatMoney, formatTime } from "@/lib/utils";
 
 export function MapTab() {
-  const { bundle, focusedActivityId, focusActivity } = useTrip();
+  const { bundle, focusedActivityId, focusActivity, updateActivity } = useTrip();
+  const [locating, setLocating] = useState<{ done: number; total: number } | null>(null);
   const [dayFilter, setDayFilter] = useState<string | "all">(() => {
     if (!focusedActivityId) return "all";
     return bundle.days.find((d) => d.activities.some((a) => a.id === focusedActivityId))?.id ?? "all";
@@ -148,9 +152,42 @@ export function MapTab() {
         </div>
       </div>
       {unmapped.length > 0 && (
-        <p className="text-xs text-muted">
-          {unmapped.length} {unmapped.length === 1 ? "stop has" : "stops have"} no confirmed location and {unmapped.length === 1 ? "isn't" : "aren't"} shown on the map.
-        </p>
+        <div className="flex flex-col gap-2 rounded-2xl border border-line bg-white/70 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-muted">
+            {unmapped.length} {unmapped.length === 1 ? "stop has" : "stops have"} no location yet and {unmapped.length === 1 ? "isn't" : "aren't"} shown on the map.
+          </p>
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<Crosshair className="h-4 w-4" />}
+            loading={!!locating}
+            onClick={async () => {
+              const targets = visibleDays.flatMap((d) =>
+                d.activities.filter((a) => a.latitude === null || a.longitude === null).map((a) => ({ a, d })),
+              );
+              let found = 0;
+              setLocating({ done: 0, total: targets.length });
+              for (const [i, { a, d }] of targets.entries()) {
+                try {
+                  // Prefer the address; fall back to the place name within the day's city.
+                  const hit = await lookupLocation(a.address || a.name, d.city);
+                  if (hit) {
+                    found++;
+                    await updateActivity(a.id, { latitude: hit.latitude, longitude: hit.longitude }, { silent: true });
+                  }
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "Location lookup failed");
+                  break;
+                }
+                setLocating({ done: i + 1, total: targets.length });
+              }
+              setLocating(null);
+              toast.success(found ? `Placed ${found} of ${targets.length} stops on the map` : "Couldn't find those locations");
+            }}
+          >
+            {locating ? `Locating ${locating.done}/${locating.total}…` : "Locate missing stops"}
+          </Button>
+        </div>
       )}
     </div>
   );
