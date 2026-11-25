@@ -41,3 +41,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 tests/screenshots/
+
+# Keep the lockfile for reproducible installs (the repo root ignores lockfiles)
+!package-lock.json
