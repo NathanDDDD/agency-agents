@@ -1,0 +1,123 @@
+@import "tailwindcss";
+
+@theme {
+  --color-navy: #101c33;
+  --color-navy-800: #1a2944;
+  --color-navy-700: #26375a;
+  --color-navy-600: #3a4d73;
+  --color-ivory: #f5f3ee;
+  --color-ivory-200: #ebe7de;
+  --color-ivory-300: #ddd7ca;
+  --color-pilot: #456cff;
+  --color-pilot-600: #3457e0;
+  --color-pilot-50: #eef2ff;
+  --color-gold: #dda96c;
+  --color-gold-600: #c48f50;
+  --color-gold-50: #fbf3e8;
+  --color-ink: #101c33;
+  --color-muted: #5b6478;
+  --color-line: #e4e0d6;
+  --color-success: #2f8f6b;
+  --color-danger: #c2413b;
+
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+
+  --radius-card: 1.25rem;
+  --shadow-soft: 0 1px 2px rgb(16 28 51 / 0.04), 0 8px 24px -12px rgb(16 28 51 / 0.12);
+  --shadow-lift: 0 2px 4px rgb(16 28 51 / 0.06), 0 24px 48px -20px rgb(16 28 51 / 0.28);
+
+  --animate-fade-up: fade-up 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-fade-in: fade-in 0.3s ease-out both;
+  --animate-sheet-up: sheet-up 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes sheet-up {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    background: var(--color-ivory);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: rgb(69 108 255 / 0.18);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-pilot);
+    outline-offset: 2px;
+  }
+}
+
+@utility font-display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  letter-spacing: -0.01em;
+}
+
+@utility card {
+  background: white;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--color-line);
+  box-shadow: var(--shadow-soft);
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Leaflet tweaks */
+.leaflet-container {
+  font-family: var(--font-sans);
+  background: var(--color-ivory-200);
+}
+.leaflet-popup-content-wrapper {
+  border-radius: 14px;
+  box-shadow: var(--shadow-lift);
+}
+.tp-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px 999px 999px 4px;
+  transform: rotate(-45deg);
+  color: white;
+  font-weight: 700;
+  font-size: 12px;
+  border: 2px solid white;
+  box-shadow: 0 4px 12px rgb(16 28 51 / 0.35);
+  transition: transform 0.2s;
+}
+.tp-marker > span {
+  transform: rotate(45deg);
+}
+.tp-marker.is-active {
+  transform: rotate(-45deg) scale(1.25);
+}
