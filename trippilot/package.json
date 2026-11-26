@@ -10,7 +10,8 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test:e2e": "node tests/e2e.cjs",
     "test": "vitest run",
-    "eval:itinerary": "tsx --conditions=react-server scripts/eval-itinerary.ts"
+    "eval:itinerary": "tsx --conditions=react-server scripts/eval-itinerary.ts",
+    "go-live": "node scripts/go-live.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.14.0",

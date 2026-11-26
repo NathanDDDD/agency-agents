@@ -109,6 +109,31 @@ Tables (all with UUID PKs, `created_at`/`updated_at`, ownership and RLS):
 
 ---
 
+## Go live in one command
+
+On your own computer (Node 22+):
+
+```bash
+git clone -b claude/trippilot-mvp-build-j5gott https://github.com/nathandddd/agency-agents.git
+cd agency-agents/trippilot
+npm install
+npm run go-live
+```
+
+`go-live` walks you through everything and is safe to re-run:
+
+1. Asks for your Supabase URL and anon key and your Anthropic key, then writes `.env.local` (git-ignored, readable only by you).
+2. Checks both keys with free API calls.
+3. Applies both migrations with the Supabase CLI (from your database connection string, used once and not saved), or guides you through the SQL Editor. It then confirms the tables and the AI quota function exist.
+4. Runs lint, typecheck, unit tests and a production build.
+5. Starts the app locally and confirms live mode, so you can sign up and plan a real trip.
+6. Deploys to Vercel: login, link, copy the environment variables, deploy, then set `NEXT_PUBLIC_SITE_URL` and redeploy.
+7. Offers the live quality benchmark (default **no**; about $4–6 for a full run).
+
+It can't do one step for you: in Supabase, under Authentication → URL Configuration, set the Site URL and add `<your-url>/**` to Redirect URLs. The script prints the exact values.
+
+Before you start, create accounts on [Supabase](https://supabase.com) (new project), [Anthropic](https://console.anthropic.com) (API key, with billing set up) and [Vercel](https://vercel.com) (free Hobby plan is fine).
+
 ## Getting started
 
 Requirements: Node.js 20.9+ (22 recommended) and npm.
@@ -203,6 +228,8 @@ Modes: `--demo` (free, checks the wiring), live (needs `ANTHROPIC_API_KEY`; roug
 ---
 
 ## Deployment (Vercel)
+
+`npm run go-live` does all of this automatically. To do it by hand instead:
 
 1. Import the repository in Vercel and set **Root Directory** to `trippilot`.
 2. Framework preset: Next.js (auto-detected). Build command `npm run build`.
